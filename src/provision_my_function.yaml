@@ -1,0 +1,69 @@
+# ───────────── VARIABLES ──────────────
+RG=""                 # your existing resource group
+LOCATION="francecentral"              # region of that group
+EH_NS=""             # existing EH namespace
+EH_NAME=""                # existing Event Hub
+STORAGE=""      # new storage account (must be 3–24 lowercase)
+FUNC=""             # new Function App name (globally unique)
+COG=""        # new Cognitive Services name (globally unique)
+# ───────────────────────────────────────
+
+# 1️⃣ Create a Storage Account for Functions
+az storage account create \
+  --name $STORAGE \
+  --resource-group $RG \
+  --location $LOCATION \
+  --sku Standard_LRS
+
+# 2️⃣ Create the Function App (Python 3.9, Consumption plan)
+az functionapp create \
+  --resource-group $RG \
+  --consumption-plan-location $LOCATION \
+  --name $FUNC \
+  --storage-account $STORAGE \
+  --runtime python \
+  --functions-version 4 \
+  --runtime-version 3.9
+
+# 3️⃣ Create a Text Analytics (Cognitive Services) resource
+az cognitiveservices account create \
+  --name $COG \
+  --resource-group $RG \
+  --kind TextAnalytics \
+  --sku F0 \
+  --location $LOCATION \
+  --yes
+
+# 4️⃣ Grab your Text Analytics endpoint & key
+ENDPOINT=$(az cognitiveservices account show \
+  --name $COG \
+  --resource-group $RG \
+  --query "properties.endpoint" \
+  --output tsv)
+KEY=$(az cognitiveservices account keys list \
+  --name $COG \
+  --resource-group $RG \
+  --query "key1" \
+  --output tsv)
+
+# 5️⃣ Grab your existing Event Hub connection string
+EH_CONN_STR=$(az eventhubs namespace authorization-rule keys list \
+  --resource-group $RG \
+  --namespace-name $EH_NS \
+  --name RootManageSharedAccessKey \
+  --query "primaryConnectionString" \
+  --output tsv)
+
+# 6️⃣ Configure your Function App’s App Settings
+az functionapp config appsettings set \
+  --name $FUNC \
+  --resource-group $RG \
+  --settings \
+    EVENT_HUB_NAME="$EH_NAME" \
+    EVENT_HUB_CONNECTION_STRING="$EH_CONN_STR" \
+    COG_SERVICE_ENDPOINT="$ENDPOINT" \
+    COG_SERVICE_KEY="$KEY"
+
+# 7️⃣ Deploy your Python Function code
+#    Make sure you’re in your function project root (with __init__.py, function.json, requirements.txt)
+func azure functionapp publish $FUNC --python

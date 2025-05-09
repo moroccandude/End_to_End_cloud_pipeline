@@ -1,2 +1,5 @@
 facker 
-azure-eventhub azure-identity
+azure-eventhub 
+azure-identity
+dotenv
+aiohttp
